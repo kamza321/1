@@ -41,9 +41,29 @@ def get_text_from_url(url):
         # 일반 웹페이지 (HTML) 인 경우
         soup = BeautifulSoup(response.text, 'html.parser')
         
+        # PubMed인 경우 초록 및 본문 추출 로직 추가
+        if 'pubmed.ncbi.nlm.nih.gov' in url:
+            pubmed_text = ""
+            
+            # 초록(Abstract) 추출 시도
+            abstract_div = soup.find('div', id='enc-abstract') or soup.find('div', class_='abstract-content selected')
+            if abstract_div:
+                pubmed_text += "--- PubMed Abstract ---\n"
+                pubmed_text += abstract_div.get_text(separator='\n', strip=True) + "\n\n"
+            
+            # 본문(Body/Full text) 추출 시도 (PubMed Central 등에서 무료로 제공되는 경우)
+            body_div = soup.find('div', id='enc-body')
+            if body_div:
+                pubmed_text += "--- PubMed Full Text Option ---\n"
+                pubmed_text += body_div.get_text(separator='\n', strip=True) + "\n\n"
+                
+            if pubmed_text.strip():
+                return pubmed_text
+                
+        # PubMed가 아니거나 (또는 추출에 실패한 경우) 기본 로직 진행
         # arXiv나 일반 사이트의 초록/본문을 가져오기 위해 주로 <p> 태그 추출
         paragraphs = soup.find_all('p')
-        text = "\n".join([p.get_text() for p in paragraphs])
+        text = "\n".join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
         
         # 만약 본문이 너무 짧다면 전체 텍스트 추출 시도
         if len(text) < 500:
@@ -87,9 +107,17 @@ def analyze_paper(text, api_key=None):
 
 def main():
     parser = argparse.ArgumentParser(description="논문 링크에서 '연구 목적'과 '데이터셋'을 추출해주는 AI 스크립트입니다.")
-    parser.add_argument("url", help="분석할 논문의 URL (PDF 직접 링크 또는 arXiv 등 웹페이지 링크)")
+    parser.add_argument("url", nargs='?', help="분석할 논문의 URL (PDF 직접 링크 또는 arXiv 등 웹페이지 링크)")
     args = parser.parse_args()
     
+    url = args.url
+    if not url:
+        print("\n💡 [안내] 실행 시 URL이 입력되지 않았습니다.")
+        url = input("🔗 분석할 논문의 URL을 직접 입력하세요:\n👉 (붙여넣기 후 엔터) ").strip()
+        if not url:
+            print("❌ 에러: URL이 입력되지 않았습니다. 프로그램을 종료합니다.")
+            sys.exit(1)
+            
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         print("❌ 에러: OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
@@ -97,9 +125,9 @@ def main():
         print("export OPENAI_API_KEY='sk-여러분의_실제_API_키'")
         sys.exit(1)
         
-    print(f"⏳ [{args.url}]에서 텍스트를 다운로드 및 추출하는 중...")
+    print(f"⏳ [{url}]에서 텍스트를 다운로드 및 추출하는 중...")
     try:
-        text = get_text_from_url(args.url)
+        text = get_text_from_url(url)
         if not text.strip():
             print("❌ 텍스트를 추출하지 못했습니다. 링크가 올바른지, 접근 권한이 필요한 페이지인지 확인해주세요.")
             sys.exit(1)
